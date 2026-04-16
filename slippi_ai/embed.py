@@ -429,6 +429,15 @@ embed_jumps_left = OneHotEmbedding("jumps_left", 7, dtype=np.uint8)
 embed_stocks = OneHotEmbedding(
     "stocks", 5, dtype=np.uint8, one_hot_policy=OneHotPolicy.CLAMP)
 
+# 45 ledge grabs is the tournament limit; 50 buckets with CLAMP captures that
+# threshold cleanly while leaving a small margin.
+embed_ledge_grabs = OneHotEmbedding(
+    "ledge_grabs", 50, dtype=np.uint16, one_hot_policy=OneHotPolicy.CLAMP)
+
+# remaining_time is already normalized to [0, 1] at parse time.
+embed_remaining_time = FloatEmbedding(
+    "remaining_time", scale=1.0, lower=0., upper=1.)
+
 def _base_player_embedding(
     xy_scale: float = 0.05,
     shield_scale: float = 0.01,
@@ -436,6 +445,7 @@ def _base_player_embedding(
     with_speeds: bool = False,
     legacy_jumps_left: bool = False,
     with_stocks: bool = True,
+    with_ledge_grabs: bool = True,
 ) -> list[tuple[str, Embedding]]:
   embed_xy = FloatEmbedding("xy", scale=xy_scale)
 
@@ -459,6 +469,9 @@ def _base_player_embedding(
   if with_stocks:
     embedding.append(("stocks", embed_stocks))
 
+  if with_ledge_grabs:
+    embedding.append(("ledge_grabs", embed_ledge_grabs))
+
   if with_speeds:
     embed_speed = FloatEmbedding("speed", scale=speed_scale)
     embedding.extend([
@@ -480,6 +493,7 @@ def make_player_embedding(
     with_nana: bool = True,
     legacy_jumps_left: bool = False,
     with_stocks: bool = True,
+    with_ledge_grabs: bool = True,
 ) -> StructEmbedding[Player]:
   embedding = _base_player_embedding(
       xy_scale=xy_scale,
@@ -488,6 +502,7 @@ def make_player_embedding(
       with_speeds=with_speeds,
       legacy_jumps_left=legacy_jumps_left,
       with_stocks=with_stocks,
+      with_ledge_grabs=with_ledge_grabs,
   )
 
   if with_nana:
@@ -516,6 +531,7 @@ class PlayerConfig:
   with_nana: bool = True
   legacy_jumps_left: bool = False
   with_stocks: bool = True
+  with_ledge_grabs: bool = True
 
 default_player_config = PlayerConfig()
 
@@ -580,6 +596,7 @@ def make_items_embedding(
 def make_game_embedding(
     with_randall: bool = True,
     with_fod: bool = True,
+    with_remaining_time: bool = True,
     items_config: ItemsConfig = ItemsConfig(),
     player_config: dict = dataclasses.asdict(default_player_config),
 ):
@@ -609,16 +626,18 @@ def make_game_embedding(
       items_config=items_config,
       xy_scale=player_config['xy_scale'])
 
-  embedding = Game(
-      p0=embed_player,
-      p1=embed_player,
-      stage=embed_stage,
-      randall=embed_randall,
-      fod_platforms=embed_fod,
-      items=embed_items,
-  )
+  embedding = [
+      ("p0", embed_player),
+      ("p1", embed_player),
+      ("stage", embed_stage),
+      ("randall", embed_randall),
+      ("fod_platforms", embed_fod),
+      ("items", embed_items),
+  ]
+  if with_remaining_time:
+    embedding.append(("remaining_time", embed_remaining_time))
 
-  return struct_embedding_from_nt("game", embedding)
+  return ordered_struct_embedding("game", embedding, Game)
 
 # Embeddings for controllers
 embed_buttons = ordered_struct_embedding(

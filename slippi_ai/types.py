@@ -46,6 +46,7 @@ class Nana(NamedTuple):
   exists: np.bool_
   percent: np.uint16
   stocks: np.uint8
+  ledge_grabs: np.uint16
   facing: np.bool_
   x: np.float32
   y: np.float32
@@ -59,6 +60,7 @@ class Nana(NamedTuple):
 class Player(NamedTuple):
   percent: np.uint16
   stocks: np.uint8
+  ledge_grabs: np.uint16
   facing: np.bool_
   x: np.float32
   y: np.float32
@@ -100,6 +102,7 @@ class Game(NamedTuple):
   p1: Player
 
   stage: np.uint8
+  remaining_time: np.float32
   randall: Randall
   fod_platforms: FoDPlatforms
 

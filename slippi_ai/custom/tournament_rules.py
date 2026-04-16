@@ -50,7 +50,7 @@ def cumulative_ledge_grabs(action_array: np.ndarray) -> np.ndarray:
   Output has the same length as the input and is a running count of
   transitions into EDGE_CATCHING up to and including each frame.
   """
-  return np.cumsum(_entry_mask(action_array)).astype(np.uint8)
+  return np.cumsum(_entry_mask(action_array)).astype(np.uint16)
 
 
 def game_ended_by_timeout(last_frame: int, timer_seconds: int) -> bool:
