@@ -49,8 +49,25 @@ class CountLedgeGrabsTest(unittest.TestCase):
     )
     cum = tr.cumulative_ledge_grabs(actions)
     # Cum counts increment at each entry: 0*3, 1*4, 1*2, 2*3
-    expected = np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2], dtype=np.uint8)
+    expected = np.array([0, 0, 0, 1, 1, 1, 1, 1, 1, 2, 2, 2], dtype=np.uint16)
     np.testing.assert_array_equal(cum, expected)
+    self.assertEqual(cum.dtype, np.uint16)
+
+  def test_cumulative_ledge_grabs_returns_uint16(self):
+    actions = np.array([STAND, EDGE, STAND], dtype=np.uint16)
+    cum = tr.cumulative_ledge_grabs(actions)
+    self.assertEqual(cum.dtype, np.uint16)
+
+  def test_cumulative_ledge_grabs_long_game_no_overflow(self):
+    # 300+ ledge grabs would overflow uint8 (255 ceiling).
+    num_grabs = 300
+    # Each grab is STAND -> EDGE -> STAND (ensures a transition per cycle).
+    actions = np.tile([STAND, EDGE, STAND], num_grabs).astype(np.uint16)
+    cum = tr.cumulative_ledge_grabs(actions)
+    self.assertEqual(cum.dtype, np.uint16)
+    self.assertEqual(int(cum[-1]), num_grabs)
+    # Confirm the final count matches count_ledge_grabs too.
+    self.assertEqual(tr.count_ledge_grabs(actions), num_grabs)
 
 
 class ComputeWinnerTest(unittest.TestCase):

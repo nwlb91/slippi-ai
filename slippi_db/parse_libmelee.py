@@ -6,6 +6,10 @@ import pyarrow as pa
 import melee
 
 from slippi_ai import utils
+from slippi_ai.custom.tournament_rules import (
+    EDGE_CATCHING_ACTION_ID,
+    FRAMES_PER_SECOND,
+)
 from slippi_ai.types import (
   GAME_TYPE,
   LIBMELEE_BUTTONS,
@@ -43,6 +47,7 @@ def get_base_player(player: melee.PlayerState) -> dict:
   return dict(
       percent=np.uint16(player.percent),
       stocks=np.uint8(player.stock),
+      ledge_grabs=np.uint16(0),  # populated by Parser across frames
       facing=player.facing,
       x=player.position.x,
       y=player.position.y,
@@ -101,11 +106,60 @@ def get_item(projectile: melee.Projectile) -> Item:
       y=projectile.position.y,
   )
 
+DEFAULT_TIMER_SECONDS = 60 * 8
+
+
+class _LedgeGrabTracker:
+  """Tracks cumulative ledge-grab count across frames for one player slot."""
+
+  __slots__ = ('count', 'prev_edge')
+
+  def __init__(self):
+    self.count = 0
+    self.prev_edge = False
+
+  def update(self, action_value: int) -> int:
+    is_edge = action_value == EDGE_CATCHING_ACTION_ID
+    if is_edge and not self.prev_edge:
+      self.count += 1
+    self.prev_edge = is_edge
+    return self.count
+
+
 class Parser:
 
-  def __init__(self, ports: Optional[Sequence[int]] = None):
+  def __init__(
+      self,
+      ports: Optional[Sequence[int]] = None,
+      timer_seconds: int = DEFAULT_TIMER_SECONDS,
+  ):
     self.item_assigner = parsing_utils.ItemAssigner()
     self.ports = ports
+    self.timer_seconds = timer_seconds
+    self._leader_ledge: dict[int, _LedgeGrabTracker] = {}
+    self._nana_ledge: dict[int, _LedgeGrabTracker] = {}
+
+  def _update_player_ledge_grabs(self, port: int, player_state) -> Player:
+    base = get_base_player(player_state)
+
+    leader_tracker = self._leader_ledge.setdefault(port, _LedgeGrabTracker())
+    base['ledge_grabs'] = np.uint16(
+        leader_tracker.update(int(player_state.action.value)))
+
+    if player_state.nana is not None:
+      nana_dict = get_base_player(player_state.nana)
+      nana_tracker = self._nana_ledge.setdefault(port, _LedgeGrabTracker())
+      nana_dict['ledge_grabs'] = np.uint16(
+          nana_tracker.update(int(player_state.nana.action.value)))
+      nana = Nana(exists=np.bool(True), **nana_dict)
+    else:
+      nana = _EMPTY_NANA
+
+    return Player(
+        nana=nana,
+        controller=get_controller(player_state.controller_state),
+        **base,
+    )
 
   def get_game(
       self,
@@ -120,7 +174,7 @@ class Parser:
           f'Ports changed from {self.ports} to {ports_this_frame} on frame {game.frame}')
 
     players = {
-        f'p{i}': get_player(game.players[p])
+        f'p{i}': self._update_player_ledge_grabs(p, game.players[p])
         for i, p in enumerate(self.ports)}
 
     if game.stage is melee.Stage.YOSHIS_STORY:
@@ -148,8 +202,15 @@ class Parser:
 
     items = _EMPTY_ITEMS._replace(**items_dict)
 
+    # game.frame is -123 pre-start, 0 at timer start, increasing each frame.
+    frame_index = max(0, int(game.frame))
+    total_timer_frames = max(1, self.timer_seconds * FRAMES_PER_SECOND)
+    remaining_time = np.float32(
+        max(0.0, 1.0 - frame_index / total_timer_frames))
+
     return Game(
         stage=np.uint8(game.stage.value),
+        remaining_time=remaining_time,
         randall=Randall(
             x=np.float32(randall_x),
             y=np.float32(randall_y),

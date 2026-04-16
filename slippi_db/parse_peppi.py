@@ -7,6 +7,10 @@ import peppi_py
 import peppi_py.frame
 
 from slippi_ai import types, utils
+from slippi_ai.custom.tournament_rules import (
+    FRAMES_PER_SECOND,
+    cumulative_ledge_grabs,
+)
 from slippi_db import parsing_utils
 
 BUTTON_MASKS = {
@@ -61,18 +65,21 @@ def get_base_player_data(data: peppi_py.frame.Data, handle_nulls: bool = False) 
   else:
     hurtbox_state_np = to_numpy_safe(hurtbox_state)
 
+  action_array = to_numpy_safe(post.state)
+
   return dict(
       percent=np.asarray(to_numpy_safe(post.percent), dtype=np.uint16),
       facing=to_numpy_safe(post.direction) > 0,
       x=to_numpy_safe(position.x),
       y=to_numpy_safe(position.y),
-      action=to_numpy_safe(post.state),
+      action=action_array,
       invulnerable=hurtbox_state_np != 0,
       character=to_numpy_safe(post.character),  # uint8
       jumps_left=to_numpy_safe(post.jumps),  # uint8
       shield_strength=to_numpy_safe(post.shield),  # float
       on_ground=np.logical_not(to_numpy_safe(post.airborne)),
       stocks=to_numpy_safe(post.stocks),  # uint8
+      ledge_grabs=cumulative_ledge_grabs(action_array),
   )
 
 _NANA_TYPE = utils.reify_tuple_type(types.Nana)
@@ -218,8 +225,16 @@ def from_peppi(peppi_game: peppi_py.Game) -> types.GAME_TYPE:
       for platform in (LEFT, RIGHT):
         fod_platform_heights[platform.value][i] = current_heights[platform.value]
 
+  timer_seconds = peppi_game.start.timer
+  total_timer_frames = max(1, timer_seconds * FRAMES_PER_SECOND)
+  frame_indices = np.arange(game_length, dtype=np.float32)
+  remaining_time = np.maximum(
+      0.0, 1.0 - frame_indices / total_timer_frames
+  ).astype(np.float32)
+
   game = types.Game(
       stage=np.full([game_length], stage.value, dtype=np.uint8),
+      remaining_time=remaining_time,
       randall=types.Randall(
           x=randall_x.astype(np.float32),
           y=randall_y.astype(np.float32),
