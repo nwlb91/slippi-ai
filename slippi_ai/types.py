@@ -45,6 +45,7 @@ class Controller(NamedTuple):
 class Nana(NamedTuple):
   exists: np.bool_
   percent: np.uint16
+  stocks: np.uint8
   facing: np.bool_
   x: np.float32
   y: np.float32
@@ -57,6 +58,7 @@ class Nana(NamedTuple):
 
 class Player(NamedTuple):
   percent: np.uint16
+  stocks: np.uint8
   facing: np.bool_
   x: np.float32
   y: np.float32

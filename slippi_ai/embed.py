@@ -425,12 +425,17 @@ legacy_embed_jumps_left = OneHotEmbedding(
 # we initially forgot to add 1 to the max jumps left, fixed Sep 2025
 embed_jumps_left = OneHotEmbedding("jumps_left", 7, dtype=np.uint8)
 
+# Standard games are up to 4 stocks; CLAMP covers stock-glitch edge cases.
+embed_stocks = OneHotEmbedding(
+    "stocks", 5, dtype=np.uint8, one_hot_policy=OneHotPolicy.CLAMP)
+
 def _base_player_embedding(
     xy_scale: float = 0.05,
     shield_scale: float = 0.01,
     speed_scale: float = 0.5,
     with_speeds: bool = False,
     legacy_jumps_left: bool = False,
+    with_stocks: bool = True,
 ) -> list[tuple[str, Embedding]]:
   embed_xy = FloatEmbedding("xy", scale=xy_scale)
 
@@ -450,6 +455,9 @@ def _base_player_embedding(
       ("shield_strength", FloatEmbedding("shield_size", scale=shield_scale)),
       ("on_ground", embed_bool),
   ]
+
+  if with_stocks:
+    embedding.append(("stocks", embed_stocks))
 
   if with_speeds:
     embed_speed = FloatEmbedding("speed", scale=speed_scale)
@@ -471,6 +479,7 @@ def make_player_embedding(
     with_controller: bool = False,
     with_nana: bool = True,
     legacy_jumps_left: bool = False,
+    with_stocks: bool = True,
 ) -> StructEmbedding[Player]:
   embedding = _base_player_embedding(
       xy_scale=xy_scale,
@@ -478,6 +487,7 @@ def make_player_embedding(
       speed_scale=speed_scale,
       with_speeds=with_speeds,
       legacy_jumps_left=legacy_jumps_left,
+      with_stocks=with_stocks,
   )
 
   if with_nana:
@@ -505,6 +515,7 @@ class PlayerConfig:
   with_controller: bool = False
   with_nana: bool = True
   legacy_jumps_left: bool = False
+  with_stocks: bool = True
 
 default_player_config = PlayerConfig()
 

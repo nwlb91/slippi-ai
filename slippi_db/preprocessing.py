@@ -12,6 +12,7 @@ import peppi_py
 from slippi_db import parse_libmelee
 from slippi_db import parse_peppi
 from slippi_ai import types
+from slippi_ai.custom import tournament_rules
 
 def assert_same_parse(game_path: str):
   peppi_game_raw = parse_peppi.read_slippi(game_path)
@@ -210,8 +211,18 @@ def get_metadata(game: peppi_py.Game) -> dict:
   for key in ['stage', 'timer', 'is_teams']:
     result[key] = getattr(start, key)
 
-  # compute winner
-  result['winner'] = compute_winner(game)
+  # compute winner (tournament rules applied on top of upstream logic)
+  result['winner'] = tournament_rules.compute_correct_winner(
+      last_frame=result['lastFrame'],
+      timer_seconds=start.timer,
+      action_arrays=[
+          port.leader.post.state.to_numpy() for port in game.frames.ports],
+      final_stocks=[
+          port.leader.post.stocks[-1].as_py() for port in game.frames.ports],
+      final_percents=[
+          port.leader.post.percent[-1].as_py() for port in game.frames.ports],
+      upstream_winner=compute_winner(game),
+  )
 
   return result
 

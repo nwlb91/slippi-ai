@@ -72,6 +72,7 @@ def get_base_player_data(data: peppi_py.frame.Data, handle_nulls: bool = False) 
       jumps_left=to_numpy_safe(post.jumps),  # uint8
       shield_strength=to_numpy_safe(post.shield),  # float
       on_ground=np.logical_not(to_numpy_safe(post.airborne)),
+      stocks=to_numpy_safe(post.stocks),  # uint8
   )
 
 _NANA_TYPE = utils.reify_tuple_type(types.Nana)
