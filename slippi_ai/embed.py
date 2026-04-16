@@ -432,7 +432,7 @@ embed_stocks = OneHotEmbedding(
 # 45 ledge grabs is the tournament limit; 50 buckets with CLAMP captures that
 # threshold cleanly while leaving a small margin.
 embed_ledge_grabs = OneHotEmbedding(
-    "ledge_grabs", 50, dtype=np.uint16, one_hot_policy=OneHotPolicy.CLAMP)
+    "ledge_grabs", 50, dtype=np.uint8, one_hot_policy=OneHotPolicy.CLAMP)
 
 # remaining_time is already normalized to [0, 1] at parse time.
 embed_remaining_time = FloatEmbedding(
