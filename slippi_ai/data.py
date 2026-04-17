@@ -22,6 +22,7 @@ import pyarrow.parquet as pq
 import melee
 
 from slippi_ai import reward, utils, nametags, paths, observations
+from slippi_ai.reward import RewardConfig
 from slippi_ai.types import Game, game_array_to_nt, Controller
 from slippi_ai.mirror import mirror_game
 
@@ -322,7 +323,7 @@ class TrajectoryManager:
       if not self.game_filter(game):
         continue
 
-      self.reward = reward.compute_rewards(game)
+      self.reward = reward.compute_rewards(game, **self.reward_kwargs)
       break
 
     if self.observation_filter is not None:
@@ -398,6 +399,7 @@ class DataSource:
       balance_characters: bool = False,
       name_map: Optional[dict[str, int]] = None,
       observation_config: Optional[observations.ObservationConfig] = None,
+      reward_config: Optional[Union[RewardConfig, dict]] = None,
   ):
     self.replays = replays
     self.batch_size = batch_size
@@ -419,6 +421,17 @@ class DataSource:
     self.encode_name = nametags.name_encoder(self.name_map)
     self.observation_config = observation_config
 
+    # If reward_config is provided, use it directly. Otherwise, fall back to
+    # the damage_ratio-only dict for backward compatibility.
+    if reward_config is not None:
+      if isinstance(reward_config, RewardConfig):
+        effective_reward_kwargs = dataclasses.asdict(reward_config)
+      else:
+        # Already a dict (e.g. from dataclasses.asdict upstream).
+        effective_reward_kwargs = dict(reward_config)
+    else:
+      effective_reward_kwargs = dict(damage_ratio=damage_ratio)
+
     self.replay_counter = 0
     replay_iter = self.iter_replays()
     self.managers = [
@@ -429,7 +442,7 @@ class DataSource:
             compressed=compressed,
             game_filter=self.is_allowed,
             observation_filter=build_observation_filter(),
-            reward_kwargs=dict(damage_ratio=damage_ratio),
+            reward_kwargs=effective_reward_kwargs,
             encode_name=self.encode_name,
         ) for _ in range(batch_size)
     ]
@@ -570,11 +583,19 @@ class CachedDataSource(DataSource):
 class DataConfig:
   batch_size: int = 32
   unroll_length: int = 64
-  damage_ratio: float = 0.01
+  damage_ratio: float = 0.01  # kept for backward compat; see reward_config
   compressed: bool = True
   num_workers: int = 0
   balance_characters: bool = False
   cached: bool = False
+  # Full reward shaping config for IL. If provided, overrides damage_ratio.
+  # Defaults match the RL smoke-test reward (damage + stocks + small
+  # ledge-grab penalty).
+  reward_config: RewardConfig = dataclasses.field(
+      default_factory=lambda: RewardConfig(
+          damage_ratio=0.01,
+          ledge_grab_penalty=0.02,
+      ))
 
 def make_source(
     num_workers: int,
