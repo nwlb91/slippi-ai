@@ -11,6 +11,7 @@ from slippi_ai.controller_heads import (
     SampleOutputs,
 )
 from slippi_ai.rl_lib import discounted_returns
+from slippi_ai import awr as awr_lib
 from slippi_ai import data, networks, embed, types, tf_utils
 from slippi_ai.value_function import ValueOutputs
 
@@ -41,6 +42,7 @@ class Policy(snt.Module):
       num_names: int,
       train_value_head: bool = True,
       delay: int = 0,
+      awr_config: tp.Optional[awr_lib.AWRConfig] = None,
   ):
     super().__init__(name='Policy')
     self.network = network
@@ -55,6 +57,7 @@ class Policy(snt.Module):
     self.initial_state = self.network.initial_state
     self.train_value_head = train_value_head
     self.delay = delay
+    self.awr_config = awr_config or awr_lib.AWRConfig()
 
     self.value_head = snt.Linear(1, name='value_head')
     if not train_value_head:
@@ -175,6 +178,7 @@ class Policy(snt.Module):
       initial_state: RecurrentState,
       discount: float = 0.99,
       value_cost: float = 0.5,
+      global_step: tp.Optional[tf.Tensor] = None,
   ) -> tp.Tuple[tf.Tensor, RecurrentState, dict]:
     # Let's say that delay is D and total unroll-length is U + D + 1 (overlap
     # is D + 1). Then the first trajectory has game states [0, U + D] and the
@@ -208,7 +212,18 @@ class Policy(snt.Module):
 
     metrics = unroll_outputs.metrics
 
-    total_loss = -tf.reduce_mean(unroll_outputs.log_probs)
+    # Apply AWR weighting. When disabled, weights are all-ones and this is
+    # equivalent to the previous plain-BC loss.
+    if global_step is None:
+      global_step = tf.constant(0, dtype=tf.int64)
+    advantages = unroll_outputs.value_outputs.advantages
+    awr_weights = awr_lib.compute_weights(
+        advantages, self.awr_config, global_step)
+    weighted_log_probs = awr_weights * unroll_outputs.log_probs
+    total_loss = -tf.reduce_mean(weighted_log_probs)
+
+    metrics['awr'] = awr_lib.awr_metrics(awr_weights, advantages)
+
     if self.train_value_head:
       value_loss = tf.reduce_mean(unroll_outputs.value_outputs.loss)
       total_loss += value_cost * value_loss
@@ -309,3 +324,5 @@ class Policy(snt.Module):
 class PolicyConfig:
   train_value_head: bool = True
   delay: int = 0
+  awr: awr_lib.AWRConfig = dataclasses.field(
+      default_factory=awr_lib.AWRConfig)

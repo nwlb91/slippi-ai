@@ -4,6 +4,7 @@ import pickle
 import tree
 
 from slippi_ai import (
+    awr as awr_lib,
     embed,
     observations,
     policies,
@@ -96,6 +97,14 @@ def build_policy(
   controller_head_config = dict(
       controller_head_config,
       embed_controller=embed_controller)
+
+  # PolicyConfig stores the AWR config under `awr`, but Policy.__init__
+  # takes `awr_config`. Translate here (and convert dict → dataclass).
+  if 'awr' in policy_kwargs:
+    awr_value = policy_kwargs.pop('awr')
+    if isinstance(awr_value, dict):
+      awr_value = dataclass_from_dict(awr_lib.AWRConfig, awr_value)
+    policy_kwargs['awr_config'] = awr_value
 
   return policies.Policy(
       networks.construct_network(**network_config),

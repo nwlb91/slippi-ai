@@ -52,6 +52,9 @@ class Learner:
 
     self.compile = compile
 
+    self._global_step = tf.Variable(
+        0, dtype=tf.int64, trainable=False, name='global_step')
+
     compile_kwargs = dict(jit_compile=jit_compile, autograph=False)
 
     self._compiled_step = tf.function(
@@ -90,7 +93,8 @@ class Learner:
     with tf.GradientTape() as tape:
       policy_loss, policy_final_states, policy_metrics = self.policy.imitation_loss(
           tm_frames, policy_initial_states,
-          self.value_cost, self.discount)
+          self.value_cost, self.discount,
+          global_step=self._global_step)
 
       if train:
         policy_params = self.policy_vars
@@ -127,6 +131,9 @@ class Learner:
 
     grads = (policy_grads, value_grads)
 
+    if train and apply_grads:
+      self._global_step.assign_add(1)
+
     # convert metrics to batch-major
     # metrics: dict = tf.nest.map_structure(
     #   lambda t: swap_axes(t) if len(t.shape) >= 2 else t,
@@ -158,6 +165,7 @@ class Learner:
     policy_grads, value_grads = grads
     self.policy_optimizer.apply(policy_grads, self.policy_vars)
     self.value_optimizer.apply(value_grads, self.value_vars)
+    self._global_step.assign_add(1)
 
   def _step(
       self,
